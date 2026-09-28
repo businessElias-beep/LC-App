@@ -1,51 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb } from 'pdf-lib';
 import { mailTransport } from '@/lib/mail';
 import { ContractFormData } from '@/lib/schema';
 import fs from 'fs';
 import path from 'path';
 
 export async function POST(req: NextRequest) {
+  console.log('🚀 API Request received: Starting contract generation...');
+
   try {
     const data: ContractFormData = await req.json();
+    console.log('📝 Data received:', data.email);
 
-    // 1. Load the base PDF template
-    // In production on Vercel, this should be in /public or an S3 bucket
     const templatePath = path.join(process.cwd(), 'public', 'template.pdf');
-    const existingPdfBytes = fs.readFileSync(templatePath);
+    if (!fs.existsSync(templatePath)) {
+      console.error('❌ ERROR: template.pdf not found at', templatePath);
+      return NextResponse.json({ success: false, error: 'Template file missing' }, { status: 500 });
+    }
 
+    const existingPdfBytes = fs.readFileSync(templatePath);
     const pdfDoc = await PDFDocument.load(existingPdfBytes);
     const pages = pdfDoc.getPages();
     const firstPage = pages[0];
-    const { width, height } = firstPage.getSize();
 
-    // Helper to draw text at specific coordinates
-    // Note: Coordinates in pdf-lib start from bottom-left (0,0)
     const drawText = (text: string, x: number, y: number, size: number = 12) => {
-      firstPage.drawText(text, {
-        x,
-        y,
-        size,
-        color: rgb(0, 0, 0),
-      });
+      firstPage.drawText(text, { x, y, size, color: rgb(0, 0, 0) });
     };
 
-    /**
-     * COORDINATE MAPPING (Based on Karina Tarsia.pdf analysis)
-     * These coordinates are estimates and will be refined in the optimization loop
-     */
-    drawText(`${data.firstName} ${data.lastName}`, 150, 600, 12); // Customer Name
-    drawText(data.email, 150, 580, 11); // Email
-    drawText(data.amount, 300, 500, 12); // Investment Amount
-    drawText(`${data.returnRate}%`, 300, 480, 12); // Return Rate
-    drawText(data.term, 300, 460, 12); // Term
-    drawText(data.endDate, 300, 440, 12); // End Date
-    drawText(data.bonus, 300, 420, 12); // Bonus
+    drawText(`${data.firstName} ${data.lastName}`, 150, 600, 12);
+    drawText(data.email, 150, 580, 11);
+    drawText(data.amount, 300, 500, 12);
+    drawText(`${data.returnRate}%`, 300, 480, 12);
+    drawText(data.term, 300, 460, 12);
+    drawText(data.endDate, 300, 440, 12);
+    drawText(data.bonus, 300, 420, 12);
 
     const pdfBytes = await pdfDoc.save();
+    console.log('📄 PDF generated successfully');
 
-    // 2. Send via SMTP
-    await mailTransport.sendMail({
+    console.log('📧 Attempting to send email...');
+
+    // We wrap the sendMail in a promise to catch errors properly
+    const mailInfo = await mailTransport.sendMail({
       from: process.env.SMTP_FROM || '"Investment Firma" <noreply@firm.de>',
       to: data.email,
       subject: `Ihr Investmentvertrag - ${data.firstName} ${data.lastName}`,
@@ -58,9 +54,11 @@ export async function POST(req: NextRequest) {
       ],
     });
 
+    console.log('✅ Email sent successfully! MessageID:', mailInfo.messageId);
     return NextResponse.json({ success: true, message: 'Vertrag erfolgreich versendet!' });
+
   } catch (error: any) {
-    console.error('Error generating contract:', error);
+    console.error('❌ CRITICAL ERROR:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
