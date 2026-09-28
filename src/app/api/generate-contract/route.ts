@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PDFDocument, rgb } from 'pdf-lib';
-import { mailTransport } from '@/lib/mail';
+import { createMailTransport } from '@/lib/mail';
 import { ContractFormData } from '@/lib/schema';
 import fs from 'fs';
 import path from 'path';
@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const data: ContractFormData = await req.json();
-    console.log('📝 Data received:', data.email);
+    console.log('📝 Data received for email:', data.email);
 
     const templatePath = path.join(process.cwd(), 'public', 'template.pdf');
     if (!fs.existsSync(templatePath)) {
@@ -38,10 +38,16 @@ export async function POST(req: NextRequest) {
     const pdfBytes = await pdfDoc.save();
     console.log('📄 PDF generated successfully');
 
-    console.log('📧 Attempting to send email...');
+    // --- SMTP SECTION ---
+    console.log('📧 Initializing SMTP Transport...');
+    const transport = await createMailTransport();
 
-    // We wrap the sendMail in a promise to catch errors properly
-    const mailInfo = await mailTransport.sendMail({
+    // Force a connection check before sending
+    console.log('📡 Verifying SMTP connection to host...');
+    await transport.verify();
+    console.log('✅ SMTP Connection verified successfully!');
+
+    const mailInfo = await transport.sendMail({
       from: process.env.SMTP_FROM || '"Investment Firma" <noreply@firm.de>',
       to: data.email,
       subject: `Ihr Investmentvertrag - ${data.firstName} ${data.lastName}`,

@@ -1,23 +1,25 @@
 import nodemailer from 'nodemailer';
 
-console.log('🔧 Initializing Mail Transport...');
-console.log('SMTP Host:', process.env.SMTP_HOST ? '✅ Set' : '❌ MISSING');
-console.log('SMTP Port:', process.env.SMTP_PORT ? '✅ Set' : '❌ MISSING');
-console.log('SMTP User:', process.env.SMTP_USER ? '✅ Set' : '❌ MISSING');
+export async function createMailTransport() {
+  const host = process.env.SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || '587');
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
 
-if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-  console.error('❌ CRITICAL: SMTP Environment Variables are not fully configured!');
-}
-
-export const mailTransport = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: process.env.SMTP_SECURE === 'true',
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false
+  if (!host || !user || !pass) {
+    throw new Error('SMTP Configuration is missing! Check your Vercel Environment Variables.');
   }
-});
+
+  return nodemailer.createTransport({
+    host: host,
+    port: port,
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: {
+      user: user,
+      pass: pass,
+    },
+    tls: {
+      rejectUnauthorized: false
+    }
+  });
+}
