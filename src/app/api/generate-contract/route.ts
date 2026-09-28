@@ -3,12 +3,11 @@ import { createMailTransport } from '@/lib/mail';
 import { ContractFormData } from '@/lib/schema';
 
 export async function POST(req: NextRequest) {
-  console.log('🚀 API Request received: External PDF Generation starting...');
+  console.log('🚀 API Request received: HTML-to-PDF process starting...');
 
   try {
     const data: ContractFormData = await req.json();
 
-    // 1. Create the HTML content for the contract
     const htmlContent = `
     <!DOCTYPE html>
     <html lang="de">
@@ -56,8 +55,7 @@ export async function POST(req: NextRequest) {
     </html>
     `;
 
-    // 2. Call External PDF Rendering API
-    console.log('🌐 Requesting PDF from external API...');
+    console.log('🌐 Requesting PDF from PDFShift...');
     const pdfResponse = await fetch('https://api.pdfshift.io/v3/convert/pdf', {
       method: 'POST',
       headers: {
@@ -66,22 +64,19 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         source: htmlContent,
-        options: {
-          format: 'A4',
-          printBackground: true,
-        }
+        // Removed the "options" object to avoid "Rogue field" error
       }),
     });
 
     if (!pdfResponse.ok) {
       const errorText = await pdfResponse.text();
+      console.error('❌ PDFShift API Error:', errorText);
       throw new Error(`PDF Generation failed: ${errorText}`);
     }
 
     const pdfBytes = await pdfResponse.arrayBuffer();
     console.log('📄 PDF received from API');
 
-    // 3. Send via SMTP
     const transport = await createMailTransport();
     await transport.sendMail({
       from: process.env.SMTP_FROM || '"Investment Firma" <noreply@firm.de>',
@@ -94,7 +89,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, message: 'Vertrag erfolgreich erstellt und versendet!' });
 
   } catch (error: any) {
-    console.error('❌ PDF-API ERROR:', error);
+    console.error('❌ FINAL ERROR:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
