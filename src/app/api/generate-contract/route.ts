@@ -57,7 +57,6 @@ export async function POST(req: NextRequest) {
     </html>
     `;
 
-    console.log('🌐 Launching Optimized Browser...');
     const browser = await puppeteer.launch({
       args: [
         ...chromium.args,
@@ -67,15 +66,15 @@ export async function POST(req: NextRequest) {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--single-process', // Crucial for serverless
+        '--single-process',
         '--disable-gpu'
       ],
       executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+      headless: true,
     });
 
     const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' }); // Faster than 'load'
+    await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
 
     const pdfBytes = await page.pdf({
       format: 'A4',
@@ -84,7 +83,6 @@ export async function POST(req: NextRequest) {
     });
 
     await browser.close();
-    console.log('📄 PDF generated');
 
     const transport = await createMailTransport();
     await transport.sendMail({
