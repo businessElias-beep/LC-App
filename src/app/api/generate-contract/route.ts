@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import puppeteer from 'puppeteer-core';
-import chromium from '@sparticuz/chromium';
 import { createMailTransport } from '@/lib/mail';
 import { ContractFormData } from '@/lib/schema';
 
 export async function POST(req: NextRequest) {
-  console.log('🚀 API Request received...');
+  console.log('🚀 API Request received: External PDF Generation starting...');
 
   try {
     const data: ContractFormData = await req.json();
 
+    // 1. Create the HTML content for the contract
     const htmlContent = `
     <!DOCTYPE html>
     <html lang="de">
@@ -57,33 +56,32 @@ export async function POST(req: NextRequest) {
     </html>
     `;
 
-    const browser = await puppeteer.launch({
-      args: [
-        ...chromium.args,
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu'
-      ],
-      executablePath: await chromium.executablePath(),
-      headless: true,
+    // 2. Call External PDF Rendering API
+    console.log('🌐 Requesting PDF from external API...');
+    const pdfResponse = await fetch('https://api.pdfshift.io/v3/convert/pdf', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${Buffer.from(`:${process.env.PDFSHIFT_API_KEY}`).toString('base64')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        source: htmlContent,
+        options: {
+          format: 'A4',
+          printBackground: true,
+        }
+      }),
     });
 
-    const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
+    if (!pdfResponse.ok) {
+      const errorText = await pdfResponse.text();
+      throw new Error(`PDF Generation failed: ${errorText}`);
+    }
 
-    const pdfBytes = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' }
-    });
+    const pdfBytes = await pdfResponse.arrayBuffer();
+    console.log('📄 PDF received from API');
 
-    await browser.close();
-
+    // 3. Send via SMTP
     const transport = await createMailTransport();
     await transport.sendMail({
       from: process.env.SMTP_FROM || '"Investment Firma" <noreply@firm.de>',
@@ -93,10 +91,10 @@ export async function POST(req: NextRequest) {
       attachments: [{ filename: `Vertrag_${data.lastName}.pdf`, content: Buffer.from(pdfBytes) }],
     });
 
-    return NextResponse.json({ success: true, message: 'Vertrag erfolgreich versendet!' });
+    return NextResponse.json({ success: true, message: 'Vertrag erfolgreich erstellt und versendet!' });
 
   } catch (error: any) {
-    console.error('❌ HTML-PDF ERROR:', error);
+    console.error('❌ PDF-API ERROR:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
