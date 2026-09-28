@@ -20,6 +20,9 @@ export async function createMailTransport() {
     },
     tls: {
       rejectUnauthorized: false
-    }
+    },
+    // DEBUGGING: This will print the actual SMTP conversation in the Vercel logs
+    logger: true,
+    debug: true
   });
 }
