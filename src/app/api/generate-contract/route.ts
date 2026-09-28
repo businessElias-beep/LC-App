@@ -1,53 +1,129 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PDFDocument, rgb } from 'pdf-lib';
-import { createMailTransport } from '@/lib/mail';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
+import { mailTransport } from '@/lib/mail';
 import { ContractFormData } from '@/lib/schema';
-import fs from 'fs';
-import path from 'path';
 
 export async function POST(req: NextRequest) {
-  console.log('🚀 API Request received: Starting contract generation...');
+  console.log('🚀 API Request received: HTML-to-PDF process starting...');
 
   try {
     const data: ContractFormData = await req.json();
-    console.log('📝 Data received for email:', data.email);
 
-    const templatePath = path.join(process.cwd(), 'public', 'template.pdf');
-    if (!fs.existsSync(templatePath)) {
-      console.error('❌ ERROR: template.pdf not found at', templatePath);
-      return NextResponse.json({ success: false, error: 'Template file missing' }, { status: 500 });
-    }
+    // 1. Create the HTML content for the contract
+    // We use a template literal with inline CSS for perfect A4 rendering
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body {
+          font-family: 'Times New Roman', serif;
+          margin: 0;
+          padding: 0;
+          background: white;
+        }
+        .page {
+          width: 210mm;
+          min-height: 297mm;
+          padding: 25mm;
+          margin: auto;
+          box-sizing: border-box;
+          position: relative;
+          line-height: 1.5;
+          font-size: 12pt;
+          color: #000;
+        }
+        .header { text-align: right; margin-bottom: 50px; }
+        .title { text-align: center; font-size: 18pt; font-weight: bold; text-decoration: underline; margin-bottom: 30px; }
+        .section { margin-bottom: 20px; }
+        .field-row { display: flex; margin-bottom: 10px; }
+        .label { font-weight: bold; width: 200px; }
+        .value { border-bottom: 1px solid black; flex: 1; padding-left: 5px; }
+        .footer { margin-top: 100px; display: flex; justify-content: space-between; }
+        .sig-box { width: 200px; border-top: 1px solid black; text-align: center; padding-top: 5px; }
+      </style>
+    </head>
+    <body>
+      <div class="page">
+        <div class="header">
+          <p>Datum: ${new Date().toLocaleDateString('de-DE')}</p>
+        </div>
 
-    const existingPdfBytes = fs.readFileSync(templatePath);
-    const pdfDoc = await PDFDocument.load(existingPdfBytes);
-    const pages = pdfDoc.getPages();
-    const firstPage = pages[0];
+        <div class="title">Investmentvertrag</div>
 
-    const drawText = (text: string, x: number, y: number, size: number = 12) => {
-      firstPage.drawText(text, { x, y, size, color: rgb(0, 0, 0) });
-    };
+        <div class="section">
+          <p>Zwischen</p>
+          <div class="field-row">
+            <span class="label">Name:</span>
+            <span class="value">${data.firstName} ${data.lastName}</span>
+          </div>
+          <div class="field-row">
+            <span class="label">E-Mail:</span>
+            <span class="value">${data.email}</span>
+          </div>
+        </div>
 
-    drawText(`${data.firstName} ${data.lastName}`, 150, 600, 12);
-    drawText(data.email, 150, 580, 11);
-    drawText(data.amount, 300, 500, 12);
-    drawText(`${data.returnRate}%`, 300, 480, 12);
-    drawText(data.term, 300, 460, 12);
-    drawText(data.endDate, 300, 440, 12);
-    drawText(data.bonus, 300, 420, 12);
+        <div class="section">
+          <p><strong>Vertragsdetails:</strong></p>
+          <div class="field-row">
+            <span class="label">Anlagesumme:</span>
+            <span class="value">${data.amount}</span>
+          </div>
+          <div class="field-row">
+            <span class="label">Rendite p.a.:</span>
+            <span class="value">${data.returnRate}%</span>
+          </div>
+          <div class="field-row">
+            <span class="label">Laufzeit:</span>
+            <span class="value">${data.term}</span>
+          </div>
+          <div class="field-row">
+            <span class="label">Laufzeitende:</span>
+            <span class="value">${data.endDate}</span>
+          </div>
+          <div class="field-row">
+            <span class="label">Willkommensbonus:</span>
+            <span class="value">${data.bonus}</span>
+          </div>
+        </div>
 
-    const pdfBytes = await pdfDoc.save();
-    console.log('📄 PDF generated successfully');
+        <div class="section" style="margin-top: 40px;">
+          <p>Hiermit wird vereinbart, dass die oben genannten Summen gemäß den Richtlinien der Firma investiert werden. Der Anleger bestätigt die Richtigkeit der Angaben.</p>
+        </div>
 
-    // --- SMTP SECTION ---
-    console.log('📧 Initializing SMTP Transport...');
-    const transport = await createMailTransport();
+        <div class="footer">
+          <div class="sig-box">Unterschrift Kunde</div>
+          <div class="sig-box">Unterschrift Firma</div>
+        </div>
+      </div>
+    </body>
+    </html>
+    `;
 
-    // Force a connection check before sending
-    console.log('📡 Verifying SMTP connection to host...');
-    await transport.verify();
-    console.log('✅ SMTP Connection verified successfully!');
+    // 2. Launch Headless Chromium
+    console.log('🌐 Launching Headless Browser...');
+    const browser = await puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+    });
 
-    const mailInfo = await transport.sendMail({
+    const page = await browser.newPage();
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+
+    console.log('📄 Rendering HTML to PDF...');
+    const pdfBytes = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' }
+    });
+
+    await browser.close();
+
+    // 3. Send via SMTP
+    console.log('📧 Sending PDF via SMTP...');
+    await mailTransport.sendMail({
       from: process.env.SMTP_FROM || '"Investment Firma" <noreply@firm.de>',
       to: data.email,
       subject: `Ihr Investmentvertrag - ${data.firstName} ${data.lastName}`,
@@ -60,11 +136,10 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    console.log('✅ Email sent successfully! MessageID:', mailInfo.messageId);
-    return NextResponse.json({ success: true, message: 'Vertrag erfolgreich versendet!' });
+    return NextResponse.json({ success: true, message: 'Vertrag erfolgreich erstellt und versendet!' });
 
   } catch (error: any) {
-    console.error('❌ CRITICAL ERROR:', error);
+    console.error('❌ HTML-PDF ERROR:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
