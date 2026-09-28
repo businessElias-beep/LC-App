@@ -3,8 +3,6 @@ import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 import { createMailTransport } from '@/lib/mail';
 import { ContractFormData } from '@/lib/schema';
-import fs from 'fs';
-import path from 'path';
 
 export async function POST(req: NextRequest) {
   console.log('🚀 API Request received: HTML-to-PDF process starting...');
@@ -12,11 +10,11 @@ export async function POST(req: NextRequest) {
   try {
     const data: ContractFormData = await req.json();
 
-    // 1. Create the HTML content for the contract
     const htmlContent = `
     <!DOCTYPE html>
-    <html>
+    <html lang="de">
     <head>
+      <meta charset="UTF-8">
       <style>
         body {
           font-family: 'Times New Roman', serif;
@@ -102,15 +100,14 @@ export async function POST(req: NextRequest) {
     </html>
     `;
 
-    // 2. Launch Headless Chromium
     const browser = await puppeteer.launch({
       args: chromium.args,
       executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+      headless: true,
     });
 
     const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    await page.setContent(htmlContent, { waitUntil: 'load' });
 
     const pdfBytes = await page.pdf({
       format: 'A4',
@@ -120,7 +117,6 @@ export async function POST(req: NextRequest) {
 
     await browser.close();
 
-    // 3. Send via SMTP
     const transport = await createMailTransport();
     await transport.sendMail({
       from: process.env.SMTP_FROM || '"Investment Firma" <noreply@firm.de>',
