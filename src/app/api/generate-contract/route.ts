@@ -7,11 +7,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const data = await req.json();
+    console.log('📥 Received Body:', JSON.stringify(data));
 
     // Backend Validation: Ensure all required fields are present and valid
     const validation = ContractSchema.safeParse(data);
     if (!validation.success) {
-      console.error('❌ Validation Error:', validation.error.format());
+      console.error('❌ Validation Error:', JSON.stringify(validation.error.format()));
       return NextResponse.json(
         { success: false, error: 'Ungültige Eingabedaten. Bitte prüfen Sie die Formularfelder.' },
         { status: 400 }
@@ -19,6 +20,7 @@ export async function POST(req: NextRequest) {
     }
 
     const validatedData = validation.data;
+    console.log('✅ Validated Data:', JSON.stringify(validatedData));
 
     const htmlContent = `
     <!DOCTYPE html>
