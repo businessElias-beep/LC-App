@@ -78,8 +78,18 @@ export async function POST(req: NextRequest) {
     console.log('📄 PDF received from API');
 
     const transport = await createMailTransport();
+
+    // Ensure we have a clean email address for the MAIL FROM command
+    const fromRaw = process.env.SMTP_FROM || 'contracts@lindenconcept.com';
+    const fromEmail = fromRaw.includes('<')
+      ? fromRaw.match(/<(.*?)>/)?.[1] || fromRaw
+      : fromRaw;
+
     await transport.sendMail({
-      from: process.env.SMTP_FROM || '"Investment Firma" <noreply@firm.de>',
+      from: fromRaw,
+      envelope: {
+        from: fromEmail,
+      },
       to: data.email,
       subject: `Ihr Investmentvertrag - ${data.firstName} ${data.lastName}`,
       text: `Sehr geehrte(r) ${data.firstName} ${data.lastName},\n\nanbei erhalten Sie Ihren Investmentvertrag.`,
