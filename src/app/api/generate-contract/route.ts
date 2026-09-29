@@ -1,12 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createMailTransport } from '@/lib/mail';
-import { ContractFormData } from '@/lib/schema';
+import { ContractSchema, ContractFormData } from '@/lib/schema';
 
 export async function POST(req: NextRequest) {
   console.log('🚀 API Request received: HTML-to-PDF process starting...');
 
   try {
-    const data: ContractFormData = await req.json();
+    const data = await req.json();
+
+    // Backend Validation: Ensure all required fields are present and valid
+    const validation = ContractSchema.safeParse(data);
+    if (!validation.success) {
+      console.error('❌ Validation Error:', validation.error.format());
+      return NextResponse.json(
+        { success: false, error: 'Ungültige Eingabedaten. Bitte prüfen Sie die Formularfelder.' },
+        { status: 400 }
+      );
+    }
+
+    const validatedData = validation.data;
 
     const htmlContent = `
     <!DOCTYPE html>
@@ -32,16 +44,16 @@ export async function POST(req: NextRequest) {
         <div class="title">Investmentvertrag</div>
         <div class="section">
           <p>Zwischen</p>
-          <div class="field-row"><span class="label">Name:</span><span class="value">${data.firstName} ${data.lastName}</span></div>
-          <div class="field-row"><span class="label">E-Mail:</span><span class="value">${data.email}</span></div>
+          <div class="field-row"><span class="label">Name:</span><span class="value">${validatedData.firstName} ${validatedData.lastName}</span></div>
+          <div class="field-row"><span class="label">E-Mail:</span><span class="value">${validatedData.email}</span></div>
         </div>
         <div class="section">
           <p><strong>Vertragsdetails:</strong></p>
-          <div class="field-row"><span class="label">Anlagesumme:</span><span class="value">${data.amount}</span></div>
-          <div class="field-row"><span class="label">Rendite p.a.:</span><span class="value">${data.returnRate}%</span></div>
-          <div class="field-row"><span class="label">Laufzeit:</span><span class="value">${data.term}</span></div>
-          <div class="field-row"><span class="label">Laufzeitende:</span><span class="value">${data.endDate}</span></div>
-          <div class="field-row"><span class="label">Willkommensbonus:</span><span class="value">${data.bonus}</span></div>
+          <div class="field-row"><span class="label">Anlagesumme:</span><span class="value">${validatedData.amount}</span></div>
+          <div class="field-row"><span class="label">Rendite p.a.:</span><span class="value">${validatedData.returnRate}%</span></div>
+          <div class="field-row"><span class="label">Laufzeit:</span><span class="value">${validatedData.term}</span></div>
+          <div class="field-row"><span class="label">Laufzeitende:</span><span class="value">${validatedData.endDate}</span></div>
+          <div class="field-row"><span class="label">Willkommensbonus:</span><span class="value">${validatedData.bonus}</span></div>
         </div>
         <div class="section" style="margin-top: 40px;">
           <p>Hiermit wird vereinbart, dass die oben genannten Summen gemäß den Richtlinien der Firma investiert werden. Der Anleger bestätigt die Richtigkeit der Angaben.</p>
@@ -64,7 +76,6 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         source: htmlContent,
-        // Removed the "options" object to avoid "Rogue field" error
       }),
     });
 
@@ -79,7 +90,6 @@ export async function POST(req: NextRequest) {
 
     const transport = await createMailTransport();
 
-    // Ensure we have a clean email address for the MAIL FROM command
     const fromRaw = process.env.SMTP_FROM || 'contracts@lindenconcept.com';
     const fromEmail = fromRaw.includes('<')
       ? fromRaw.match(/<(.*?)>/)?.[1] || fromRaw
@@ -90,10 +100,10 @@ export async function POST(req: NextRequest) {
       envelope: {
         from: fromEmail,
       },
-      to: data.email,
-      subject: `Ihr Investmentvertrag - ${data.firstName} ${data.lastName}`,
-      text: `Sehr geehrte(r) ${data.firstName} ${data.lastName},\n\nanbei erhalten Sie Ihren Investmentvertrag.`,
-      attachments: [{ filename: `Vertrag_${data.lastName}.pdf`, content: Buffer.from(pdfBytes) }],
+      to: validatedData.email,
+      subject: `Ihr Investmentvertrag - ${validatedData.firstName} ${validatedData.lastName}`,
+      text: `Sehr geehrte(r) ${validatedData.firstName} ${validatedData.lastName},\n\nanbei erhalten Sie Ihren Investmentvertrag.`,
+      attachments: [{ filename: `Vertrag_${validatedData.lastName}.pdf`, content: Buffer.from(pdfBytes) }],
     });
 
     return NextResponse.json({ success: true, message: 'Vertrag erfolgreich erstellt und versendet!' });
