@@ -99,9 +99,6 @@ export async function POST(req: NextRequest) {
 
     await transport.sendMail({
       from: fromRaw,
-      envelope: {
-        from: fromEmail,
-      },
       to: validatedData.email,
       subject: `Ihr Investmentvertrag - ${validatedData.firstName} ${validatedData.lastName}`,
       text: `Sehr geehrte(r) ${validatedData.firstName} ${validatedData.lastName},\n\nanbei erhalten Sie Ihren Investmentvertrag.`,
